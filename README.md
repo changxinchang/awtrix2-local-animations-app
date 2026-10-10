@@ -1,7 +1,9 @@
 1.用Animations.jar替换原来的应用，把AnimationsCache.txt和Animations.jar放在一起。
 
 2.convert_to_iconcache.py是AI编写的，用于32×8 的图片/GIF 转换为本地播放所需的AnimationsCache数据。
+  
   使用方法：
+  
   2.1 安装依赖：
       pip install Pillow
 
