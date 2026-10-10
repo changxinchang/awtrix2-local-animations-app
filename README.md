@@ -8,7 +8,7 @@
       pip install Pillow
 
   2.2 准备素材：
-      可以到 https://awtrix.blueforcer.de/animations/ 或者其他地方下载下载 32×8 的图片或 GIF。
+      可以到 https://awtrix.blueforcer.de/animations/ 或者其他地方下载 32×8 的图片或 GIF。
       全部放入 32x8_animations 文件夹。
   
   2.3 运行脚本：
