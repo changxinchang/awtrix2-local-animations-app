@@ -1,9 +1,3 @@
-﻿B4J=true
-Group="Default Group"
-ModulesStructureVersion=1
-Type=Class
-Version=4.2
-@EndOfDesignText@
 
 Sub Class_Globals
 	Dim App As AWTRIX
@@ -28,7 +22,11 @@ Sub Class_Globals
 	Dim DRAIN_TICKS As Int = 6         ' 退出前额外等待的 tick 数，让串口缓冲排空
 	
 	Dim appStartTime As Long = 0
-	Dim PLAY_DURATION As Int = 20000   ' ★ 播放时长 20 秒
+	Dim PLAY_DURATION As Int = 60000   ' ★ 播放时长 60 秒
+	
+	Dim finishedSent As Boolean = False
+	
+	Dim hasExited As Boolean = False
 	
 	Private curFrames As List
 	Private animationIDs As List
@@ -81,24 +79,24 @@ End Sub
 ' ===================== 启动 =====================
 Sub App_Started
 	Try
+		hasExited = False                ' ★ 重置
 		App.shouldShow = True
 		exiting = False
 		exitDrainTicks = 0
+		finishedSent = False
 		curFrameIdx = 0
 		frameHold = 0
 		lastFrameTime = 0
-		appStartTime = DateTime.Now        ' ★ 记录本次播放开始时间
+		appStartTime = DateTime.Now
+		nextAnimation = ""
+		curFrames = Null
 
-		' ★ 需求1：优先加载本地缓存
-		If Not(cacheLoaded) Then
-			LoadLocalCache
-		End If
-
-		' 选一个要播放的动画
+		If Not(cacheLoaded) Then LoadLocalCache
 		PickNextAnimation
 	Catch
 		Log("Error in App_Started: " & LastException)
-		nextAnimation = "random"
+		nextAnimation = ""
+		curFrames = Null
 	End Try
 End Sub
 
@@ -125,75 +123,95 @@ Private Sub ParseCache(raw As String)
 	animationlist.Clear
 	animData.Clear
     
-	' 按行拆分 properties 文件
 	Dim lines As List
 	lines = Regex.Split(CRLF, raw)
     
 	For Each line As String In lines
 		line = line.Trim
-		' 跳过空行和注释行（以#开头）
 		If line.Length = 0 Or line.StartsWith("#") Then Continue
         
-		' 找到第一个 = 分隔符
 		Dim eqPos As Int = line.IndexOf("=")
 		If eqPos <= 0 Then Continue
         
 		Dim name As String = line.SubString2(0, eqPos).Trim
 		Dim jsonValue As String = line.SubString(eqPos + 1).Trim
-        
-		' ★ 关键修复：去除 JSON 字符串中的转义反斜杠
 		jsonValue = jsonValue.Replace("\", "")
         
-		' 对每个值单独解析
-		Dim parser As JSONParser
-		parser.Initialize(jsonValue)
-        
-		' ... 以下解析逻辑保持不变 ...
-		Dim d As Map
-		d.Initialize
-        
-		If jsonValue.StartsWith("{") Then
-			Dim item As Map = parser.NextObject
-			d.Put("data", item.Get("data"))
-			If item.ContainsKey("tick") Then
-				d.Put("tick", item.Get("tick"))
-			Else
+		Try
+			Dim parser As JSONParser
+			parser.Initialize(jsonValue)
+            
+			Dim d As Map
+			d.Initialize
+            
+			If jsonValue.StartsWith("{") Then
+				Dim item As Map = parser.NextObject
+				If Not(item.ContainsKey("data")) Then Continue   ' ★ 过滤
+				Dim data As List = item.Get("data")
+				If data = Null Or data.Size = 0 Then Continue    ' ★ 过滤
+				d.Put("data", data)
+				If item.ContainsKey("tick") Then
+					d.Put("tick", item.Get("tick"))
+				Else
+					d.Put("tick", 100)
+				End If
+			Else If jsonValue.StartsWith("[") Then
+				Dim frameList As List = parser.NextArray
+				If frameList = Null Or frameList.Size = 0 Then Continue
+				Dim dataList As List
+				dataList.Initialize
+				dataList.Add(frameList)
+				d.Put("data", dataList)
 				d.Put("tick", 100)
+			Else
+				Continue
 			End If
-		Else If jsonValue.StartsWith("[") Then
-			Dim frameList As List = parser.NextArray
-			Dim dataList As List
-			dataList.Initialize
-			dataList.Add(frameList)
-			d.Put("data", dataList)
-			d.Put("tick", 100)
-		Else
-			Continue
-		End If
-        
-		animData.Put(name, d)
-		animationlist.Add(name)
+            
+			animData.Put(name, d)
+			animationlist.Add(name)
+		Catch
+			Log("Animations: skip broken entry " & name & " -> " & LastException)
+		End Try
 	Next
+	Log("Animations: valid entries = " & animationlist.Size)
 End Sub
 
 
 ' 随机挑一个动画（可结合 App.settings 做白名单，这里保持简单）
 Private Sub PickNextAnimation
 	If animationlist.Size = 0 Then
-		nextAnimation = "random"
+		nextAnimation = ""
 		curFrames = Null
 		Return
 	End If
-	Dim idx As Int = Rnd(0, animationlist.Size)
-	nextAnimation = animationlist.Get(idx)
-	Dim d As Map = animData.Get(nextAnimation)
-	curFrames = d.Get("data")
-	curFrameTick = d.Get("tick")
-	If curFrameTick < MIN_FRAME_TICK Then curFrameTick = MIN_FRAME_TICK
-	curFrameIdx = 0
-	frameHold = 0
-	lastFrameTime = DateTime.Now
-	Log("Animations: play " & nextAnimation & " (" & curFrames.Size & " frames, tick=" & curFrameTick & ")")
+    
+	' ★ 最多尝试 20 次，一定能找到一个有数据的动画
+	Dim tries As Int = 0
+	Do While tries < 20
+		Dim idx As Int = Rnd(0, animationlist.Size)
+		Dim candidate As String = animationlist.Get(idx)
+		Dim d As Map = animData.Get(candidate)
+		If d <> Null Then
+			Dim data As List = d.Get("data")
+			If data <> Null And data.Size > 0 Then
+				nextAnimation = candidate
+				curFrames = data
+				curFrameTick = d.Get("tick")
+				If curFrameTick < MIN_FRAME_TICK Then curFrameTick = MIN_FRAME_TICK
+				curFrameIdx = 0
+				frameHold = 0
+				lastFrameTime = DateTime.Now
+				Log("Animations: play " & nextAnimation & " (" & curFrames.Size & " frames, tick=" & curFrameTick & ")")
+				Return
+			End If
+		End If
+		tries = tries + 1
+	Loop
+    
+	' 全都不行 → 直接退出，别卡着
+	Log("Animations: no valid animation found, exit")
+	nextAnimation = ""
+	curFrames = Null
 End Sub
 
 ' ===================== 下载（仅当无缓存时） =====================
@@ -226,6 +244,9 @@ Sub App_evalJobResponse(Resp As JobResponse)
 End Sub
 
 Sub App_genFrame
+	' ★ 第一行：如果 AWTRIX 已经把我们切走了，绝对不要再发任何数据
+	If hasExited Then Return
+
 	If curFrames.IsInitialized = False Then curFrames.Initialize
 	If animationIDs.IsInitialized = False Then animationIDs.Initialize
 
@@ -234,26 +255,31 @@ Sub App_genFrame
 		If exitDrainTicks > 0 Then
 			exitDrainTicks = exitDrainTicks - 1
 			Return
-		Else
+		End If
+		If Not(finishedSent) Then
+			finishedSent = True
 			App.finish
 			Return
 		End If
+		Return
 	End If
 
-	' ★ 播放超过 20 秒 → 请求平滑退出，交给 AWTRIX 切换下一个应用
+	' ---- 20 秒超时 ----
 	If DateTime.Now - appStartTime >= PLAY_DURATION Then
-		Log("Animations: 20s reached, exiting...")
 		RequestExit
 		Return
 	End If
-	
-	' ---- 无帧数据时回退 ----
+
+	' ---- 无有效帧 ----
 	If curFrames = Null Or curFrames.Size = 0 Then
-		App.customCommand(CreateMap("type":"animation","ID":nextAnimation))
+		PickNextAnimation
+		If curFrames = Null Or curFrames.Size = 0 Then
+			RequestExit
+		End If
 		Return
 	End If
 
-	' ---- 节流：单帧动画至少停留 2 秒 ----
+	' ---- 节流 ----
 	Dim effectiveTick As Int = curFrameTick
 	If curFrames.Size = 1 Then effectiveTick = 2000
 
@@ -263,30 +289,28 @@ Sub App_genFrame
 	End If
 	lastFrameTime = now
 
-	' ---- 取当前帧，按实际像素数推断尺寸 ----
+	' ---- 取帧 ----
 	Dim frame As List = curFrames.Get(curFrameIdx)
 	Dim bmp(frame.Size) As Short
 	For i = 0 To frame.Size - 1
 		bmp(i) = frame.Get(i)
 	Next
 
-	Dim w As Int, h As Int
+	Dim w As Int, h As Int, x As Int
 	Select frame.Size
 		Case 64
-			w = 8 : h = 8          ' ★ 你的数据都是 8×8 图标
+			w = 8 : h = 8 : x = 12
 		Case 256
-			w = 32 : h = 8
+			w = 32 : h = 8 : x = 0
 		Case Else
-			Log("Animations: unexpected frame size " & frame.Size & ", skip")
 			curFrameIdx = curFrameIdx + 1
 			If curFrameIdx > curFrames.Size - 1 Then PickNextAnimation
 			Return
 	End Select
 	
-	' 如果希望 8×8 图标居中显示，把 x 改成 (32 - w) / 2，即 12
-	App.drawBMP(0, 0, bmp, w, h)
-
-	' ---- 推进帧索引，整个动画播完才换 ----
+	App.drawBMP(x, 0, bmp, w, h)
+	
+	' ---- 推进 ----
 	curFrameIdx = curFrameIdx + 1
 	If curFrameIdx > curFrames.Size - 1 Then
 		PickNextAnimation
@@ -295,8 +319,10 @@ End Sub
 
 ' ===================== 退出 =====================
 Sub App_Exited
+	hasExited = True                     ' ★ 关键：标记已退出
 	exiting = False
 	exitDrainTicks = 0
+	finishedSent = False
 End Sub
 
 ' 供外部/定时器调用：请求平滑退出（先排空再 finish）
