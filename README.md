@@ -10,11 +10,14 @@
   2.2 准备素材：
       可以到 https://awtrix.blueforcer.de/animations/ 或者其他地方下载下载 32×8 的图片或 GIF。
       全部放入 32x8_animations 文件夹。
+  
   2.3 运行脚本：
       python convert_to_iconcache.py
+  
   2.4 获取输出：
       生成的 AnimationsCache.txt 就是所需的AnimationsCache文件。
       将它放到 AWTRIX 的 Apps 目录下替换原文件即可。
+  
   2.5 补充说明
       关于 tick 参数：
           静态图片设 tick=2000 或更大，避免频繁切换。
