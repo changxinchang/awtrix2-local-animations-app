@@ -1,9 +1,3 @@
-﻿B4J=true
-Group=Default Group
-ModulesStructureVersion=1
-Type=Class
-Version=7.31
-@EndOfDesignText@
 'This Class takes control of the Interface to AWTRIX, the Icon Renderer
 'and some useful functions to make the development more easier.
 'Usually you dont need to modify this Class!
