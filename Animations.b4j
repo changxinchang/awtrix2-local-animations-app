@@ -1,19 +1,4 @@
-﻿AppType=StandardJava
-Build1=Default,de.blueforcer
-Group=Default Group
-Library1=jcore
-Library2=json
-Library3=jrandomaccessfile
-Module1=Animations
-Module2=AWTRIX
-NumberOfFiles=0
-NumberOfLibraries=3
-NumberOfModules=2
-Version=8.1
-@EndOfDesignText@
-
-
-#Region Project Attributes 
+﻿#Region Project Attributes 
 	#LibraryName: Animations
 	#MergeLibraries: False
 #End Region
