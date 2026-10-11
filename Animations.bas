@@ -1,10 +1,3 @@
-B4J=true
-Group="Default Group"
-ModulesStructureVersion=1
-Type=Class
-Version=4.2
-@EndOfDesignText@
-
 Sub Class_Globals
 	Dim App As AWTRIX
 	Dim animationlist As List          ' 动画名称列表
